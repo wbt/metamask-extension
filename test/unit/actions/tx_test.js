@@ -1,75 +1,49 @@
-// var jsdom = require('mocha-jsdom')
-var assert = require('assert')
-var freeze = require('deep-freeze-strict')
-var path = require('path')
-var sinon = require('sinon')
+import assert from 'assert'
+import configureMockStore from 'redux-mock-store'
+import thunk from 'redux-thunk'
+import * as actions from '../../../ui/app/store/actions'
+import * as actionConstants from '../../../ui/app/store/actionConstants'
 
-var actions = require(path.join(__dirname, '..', '..', '..', 'ui', 'app', 'actions.js'))
-var reducers = require(path.join(__dirname, '..', '..', '..', 'ui', 'app', 'reducers.js'))
+const middlewares = [thunk]
+const mockStore = configureMockStore(middlewares)
 
 describe('tx confirmation screen', function () {
-  beforeEach(function () {
-    this.sinon = sinon.sandbox.create()
-  })
-
-  afterEach(function () {
-    this.sinon.restore()
-  })
-
-  var initialState, result
-
-  describe('when there is only one tx', function () {
-    var firstTxId = 1457634084250832
-
-    beforeEach(function () {
-      initialState = {
-        appState: {
-          currentView: {
-            name: 'confTx',
-          },
+  const txId = 1457634084250832
+  const initialState = {
+    appState: {
+    },
+    metamask: {
+      unapprovedTxs: {
+        [txId]: {
+          id: txId,
+          status: 'unconfirmed',
+          time: 1457634084250,
         },
-        metamask: {
-          unapprovedTxs: {
-            '1457634084250832': {
-              id: 1457634084250832,
-              status: 'unconfirmed',
-              time: 1457634084250,
-            },
-          },
+      },
+    },
+  }
+
+  const store = mockStore(initialState)
+
+  describe('cancelTx', function () {
+    it('creates COMPLETED_TX with the cancelled transaction ID', async function () {
+      actions._setBackgroundConnection({
+        approveTransaction (_, cb) {
+          cb('An error!')
         },
-      }
-      freeze(initialState)
-    })
-
-    describe('cancelTx', function () {
-      before(function (done) {
-        actions._setBackgroundConnection({
-          approveTransaction (txId, cb) { cb('An error!') },
-          cancelTransaction (txId, cb) { cb() },
-          clearSeedWordCache (cb) { cb() },
-        })
-
-        actions.cancelTx({value: firstTxId})((action) => {
-          result = reducers(initialState, action)
-          done()
-        })
-
+        cancelTransaction (_, cb) {
+          cb()
+        },
+        getState (cb) {
+          cb(null, {})
+        },
       })
 
-      it('should transition to the account detail view', function () {
-        assert.equal(result.appState.currentView.name, 'accountDetail')
-      })
-
-      it('should have no unconfirmed txs remaining', function () {
-        var count = getUnconfirmedTxCount(result)
-        assert.equal(count, 0)
-      })
+      await store.dispatch(actions.cancelTx({ id: txId }))
+      const storeActions = store.getActions()
+      const completedTxAction = storeActions.find(({ type }) => type === actionConstants.COMPLETED_TX)
+      const { id } = completedTxAction.value
+      assert.equal(id, txId)
     })
   })
 })
-
-function getUnconfirmedTxCount (state) {
-  var txs = state.metamask.unapprovedTxs
-  var count = Object.keys(txs).length
-  return count
-}
